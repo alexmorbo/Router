@@ -1,6 +1,6 @@
 <?php
 
-namespace Router\Http;
+namespace React\Router\Http;
 
 enum Methods: string
 {

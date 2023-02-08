@@ -1,6 +1,6 @@
 <?php
 
-namespace Router\Http\Exceptions;
+namespace React\Router\Http\Exceptions;
 
 class InvalidRoute extends \Exception {
     public function __construct(string $route) {

@@ -1,6 +1,6 @@
 <?php
 
-namespace Router\Http;
+namespace React\Router\Http;
 
 use Closure;
 use HttpSoft\Response\HtmlResponse;
@@ -12,12 +12,14 @@ use Psr\Http\Message\ServerRequestInterface;
 use React\Http\HttpServer;
 use React\Http\Message\Response as MessageResponse;
 use React\Http\Message\ServerRequest;
+use React\Promise\PromiseInterface;
 use React\Socket\SocketServer;
 use ReflectionMethod;
 use RingCentral\Psr7\Response;
-use Twig\Environment;
-use Router\Http\Exceptions\InvalidResponse;
-use Router\Http\Exceptions\InvalidRoute;
+use React\Router\Http\Exceptions\InvalidResponse;
+use React\Router\Http\Exceptions\InvalidRoute;
+
+use function React\Promise\resolve;
 
 class Router {
     protected array $beforeMiddleware = [];
@@ -34,17 +36,12 @@ class Router {
     protected array $E404Handlers = [];
     protected array $E500Handlers = [];
     protected string $baseRoute = "";
-    protected Environment $twig;
     protected HttpServer $http;
 
     /**
      * @param SocketServer $socket
-     * @param bool $dev
      */
-    public function __construct(protected SocketServer $socket, protected bool $dev = false) {
-        if ($this->dev) {
-            $this->twig = new Environment(new \Twig\Loader\FilesystemLoader(__DIR__ . "/Exceptions/views"));
-        }
+    public function __construct(protected SocketServer $socket) {
     }
 
     public function setBaseRoute(string $baseRoute): self
@@ -251,27 +248,15 @@ class Router {
             try {
                 return $this->handle($request);
             } catch (\Throwable $e) {
-                if ($this->dev) {
-                    return new HtmlResponse($this->twig->render("500.html", [
-                        "Message" => $e->getMessage(),
-                        "StackTrace" => $e->getTrace(),
-                        "Main" => [
-                            "file" => $e->getFile(),
-                            "line" => $e->getLine()
-                        ],
-                        "Code" => $e->getCode()
-                    ]), 500);
-                } else {
-                    echo "{$e->getMessage()}\n{$e->getTraceAsString()}";
+                echo "{$e->getMessage()}\n{$e->getTraceAsString()}";
 
-                    $_500handler = $this->getMatchingRoutes($request, $this->E500Handlers, true)[0] ?? null;
+                $_500handler = $this->getMatchingRoutes($request, $this->E500Handlers, true)[0] ?? null;
 
-                    if (is_null($_500handler)) {
-                        return new TextResponse("An internal server error has occurred", TextResponse::STATUS_INTERNAL_SERVER_ERROR);
-                    }
-
-                    return $this->invoke($request, (new Response), null, $_500handler);
+                if (is_null($_500handler)) {
+                    return new TextResponse("An internal server error has occurred", TextResponse::STATUS_INTERNAL_SERVER_ERROR);
                 }
+
+                return $this->invoke($request, (new Response), null, $_500handler);
             }
         });
     }
@@ -305,9 +290,9 @@ class Router {
      * @param array $route
      * @throws LogicException
      * @throws InvalidResponse
-     * @return ResponseInterface
+     * @return PromiseInterface
      */
-    protected function invoke(ServerRequestInterface $request, ?ResponseInterface $response, ?Closure $next, array $route, mixed ...$extra): ResponseInterface
+    protected function invoke(ServerRequestInterface $request, ?ResponseInterface $response, ?Closure $next, array $route, mixed ...$extra): PromiseInterface
     {
         if (is_null($response) && !is_null($next)) {
             $params = [$request, $next];
@@ -331,19 +316,23 @@ class Router {
             $return = $method->invoke(null, ...$params);
         }
 
-        if (!$return instanceof ResponseInterface) {
-            throw new InvalidResponse;
+        if ($return instanceof PromiseInterface) {
+            return $return;
         }
 
-        return $return;
+        if ($return instanceof ResponseInterface) {
+            return resolve($return);
+        } else {
+            throw new InvalidResponse;
+        }
     }
 
     /**
      * @param ServerRequestInterface $request
      * @throws InvalidRoute 
-     * @return ResponseInterface
+     * @return PromiseInterface
      */
-    protected function handle(ServerRequestInterface $request): ResponseInterface
+    protected function handle(ServerRequestInterface $request): PromiseInterface
     {
         $beforeMiddleware = $this->getMatchingRoutes($request, $this->beforeMiddleware, true)[0] ?? null;
         $targetRoute = $this->getMatchingRoutes($request, $this->routes[$request->getMethod()], true)[0] ?? null;
@@ -384,7 +373,7 @@ class Router {
     {
       $pattern = preg_replace('/\/{(.*?)}/', '/(.*?)', $pattern);
 
-      return boolval(preg_match_all('#^' . $pattern . '$#', $uri, $matches, PREG_OFFSET_CAPTURE));
+      return (bool)preg_match_all('#^' . $pattern . '$#', $uri, $matches, PREG_OFFSET_CAPTURE);
     }
     
     /**
