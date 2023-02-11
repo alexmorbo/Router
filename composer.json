@@ -1,26 +1,15 @@
 {
-    "name": "alexmorbo/reactphp-router",
+    "name": "commandstring/router",
     "type": "library",
     "license": "MIT",
-    "authors": [
-        {
-            "name": "Michael Snedeker",
-            "email": "not@fou.nd",
-            "homepage": "https://github.com/CommandString"
-        },
-        {
-            "name": "Alex Morbo",
-            "email": "alex@morbo.ru"
-        }
-    ],
     "require": {
-        "php": ">=8.2",
         "react/http": "^1.8.0",
+        "twig/twig": "^3.4",
         "httpsoft/http-response": "^1.0"
     },
     "autoload": {
         "psr-4": {
-            "React\\Router\\Http\\": "./src"
+            "Router\\Http\\": "./src"
         }
     }
 }
